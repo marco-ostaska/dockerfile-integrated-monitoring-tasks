@@ -1,0 +1,61 @@
+FROM docker.io/jenkins/jenkins:lts as builder
+
+ARG user=netcool
+ARG group=ncoadmin
+ARG gid=1097
+ARG uid=1341
+
+# Install build dependencies
+RUN apt update && apt install -y --no-install-recommends \
+    wget \
+    ksh \
+    bzip2 \
+    sshpass \
+    libarchive-zip-perl \
+    && apt clean all \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user and group
+RUN groupadd -g ${gid} ${group} \
+    && useradd -G ncoadmin -u ${uid} ${user} \
+    && usermod -a -G root ${user} \
+    && find / -uid 1000 -exec chown ${user}.${group} {} \; | cat \
+    && mkdir -p /home/${user} \
+    && chown -R ${user}.${group} /home/${user} \
+    && chmod 2700 /home/${user} \
+    && chmod 775 /opt
+
+# Install Miniconda and Ansible
+USER ${user}
+RUN cd /tmp && wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+    && chmod 775 Miniconda3-latest-Linux-x86_64.sh \
+    && ./Miniconda3-latest-Linux-x86_64.sh -p /opt/miniconda3 -b \
+    && rm -rf Miniconda3-latest-Linux-x86_64.sh \
+    && pip install --no-cache-dir ansible \
+    && conda clean --all -y
+
+# Set up environment variables
+ENV LANG="POSIX" LC_ALL="POSIX" LC_ALL="POSIX" \
+    PATH=/opt/miniconda3/bin:/opt/IBM/ITM/bin:$PATH \
+    TZ=America/New_York \
+    ANSIBLE_FORCE_COLOR=true
+
+# Use a multi-stage build to create a smaller, production-ready image
+FROM docker.io/jenkins/jenkins:lts
+
+ARG user=netcool
+ARG group=ncoadmin
+
+# Copy over necessary files from the builder stage
+COPY --from=builder --chown=${user}:${group} /opt/miniconda3 /opt/miniconda3
+COPY --from=builder --chown=${user}:${group} /home/${user} /home/${user}
+
+# Set the default command to run when the container is started
+ENTRYPOINT ["/usr/local/bin/jenkins.sh"]
+
+EXPOSE 8080 5000
+
+WORKDIR "/var/jenkins_home"
+
+
+docker build --pull --no-cache -t my-jenkins:latest .
