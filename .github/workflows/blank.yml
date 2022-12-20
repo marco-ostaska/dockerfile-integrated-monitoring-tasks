@@ -1,0 +1,19 @@
+name: Build and push Docker image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the code
+      - uses: actions/checkout@v2
+
+      # Build the Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t my-jenkins:latest .
+          
